@@ -1,12 +1,13 @@
 (function() {
     'use strict';
 
-    if (!window.location.href.includes('screen=place&mode=call')) {
-        alert("Run on Mass Support screen (Rally point → Mass support)!");
-        return;
-    }
+if (!window.location.href.includes('screen=place&mode=call')) {
+    alert("This script must be run from Rally point → Mass support!");
+    window.location.href = game_data.link_base_pure + "place&mode=call";
+    throw new Error("Wrong screen");
+}
 
-    const version = "v1.4";  // ← Added version variable
+    const version = "v1.41";  // ← Added version variable
 
     const DEFENSE_UNITS = ["spear", "sword", "archer", "heavy"];
     const HEAVY_POP_DEFAULT = 6;
