@@ -1,7 +1,7 @@
 (function() {
     'use strict';
 
-if (!window.location.href.includes('screen=place&mode=call')) {
+if (!window.location.href.includes('screen=place') || !window.location.href.includes('mode=call')) {
     alert("This script must be run from Rally point → Mass support!");
     window.location.href = game_data.link_base_pure + "place&mode=call";
     throw new Error("Wrong screen");
