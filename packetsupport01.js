@@ -1,13 +1,16 @@
 (function() {
     'use strict';
 
-    if (!window.location.href.includes('screen=place&mode=call')) {
-        alert("Run on Mass Support screen (Rally point → Mass support)!");
-        return;
-    }
+if (!window.location.href.includes('screen=place') || !window.location.href.includes('mode=call')) {
+    alert("This script must be run from Rally point → Mass support!");
+    window.location.href = game_data.link_base_pure + "place&mode=call";
+    throw new Error("Wrong screen");
+}
+
+    const version = "v1.41";  // ← Added version variable
 
     const DEFENSE_UNITS = ["spear", "sword", "archer", "heavy"];
-    const HEAVY_POP = 6;
+    const HEAVY_POP_DEFAULT = 6;
     const POP_PER_K = 1000;
 
     const UNIT_LABELS = {
@@ -18,54 +21,7 @@
         heavy: "Heavies"
     };
 
-    // === GUI (unchanged) ===
-    const gui = document.createElement('div');
-    gui.id = 'mass-support-gui';
-    gui.style.cssText = `
-        position: fixed; top: 80px; right: 20px; width: 380px;
-        background: rgba(30, 30, 50, 0.92); border: 2px solid #4a6fa5;
-        border-radius: 10px; padding: 0; z-index: 9999;
-        box-shadow: 0 8px 30px rgba(0,0,0,0.7); color: #e0e0ff;
-        font-family: Verdana, sans-serif; overflow: hidden;
-        backdrop-filter: blur(6px);
-    `;
-
-    const titleBar = document.createElement('div');
-    titleBar.style.cssText = `
-        background: linear-gradient(to right, #2a4066, #3a5688);
-        padding: 10px 16px; text-align: center; font-size: 18px;
-        font-weight: bold; color: #ffffff; border-bottom: 1px solid #4a6fa5;
-    `;
-    titleBar.textContent = "PacketSender by Crim";
-    gui.appendChild(titleBar);
-
-    const content = document.createElement('div');
-    content.style.padding = '16px';
-    gui.appendChild(content);
-
-    const form = document.createElement('div');
-    form.style.display = 'flex';
-    form.style.flexDirection = 'column';
-    form.style.gap = '14px';
-
-    form.innerHTML = `
-        <label style="font-weight:bold;">Total defense pop to send (k):</label>
-        <input type="number" id="gui-total-k" value="10" min="1" step="1" style="padding:6px; font-size:15px;">
-
-        <label style="font-weight:bold;">Max packet size per village (k pop):</label>
-        <input type="number" id="gui-packet-k" value="1" min="0.5" step="0.5" style="padding:6px; font-size:15px;">
-
-        <label style="font-weight:bold;">Max scouts/spies to send per village:</label>
-        <input type="number" id="gui-max-spy" value="50" min="0" step="1" style="padding:6px; font-size:15px;">
-
-        <div style="margin-top:8px;"><strong>Reserves per village (units to keep):</strong></div>
-    `;
-
-    const resGrid = document.createElement('div');
-    resGrid.style.display = 'grid';
-    resGrid.style.gridTemplateColumns = '1fr 1fr';
-    resGrid.style.gap = '10px';
-
+    // Define units array early
     const units = [
         {key:'spear',  label:'Spears',  def:0},
         {key:'sword',  label:'Swords',  def:0},
@@ -74,88 +30,157 @@
         {key:'heavy',  label:'Heavies', def:100}
     ];
 
-    units.forEach(u => {
-        const d = document.createElement('div');
-        d.innerHTML = `
-            <label style="font-size:0.9em;">${u.label}</label>
-            <input type="number" class="gui-reserve" data-unit="${u.key}" value="${u.def}" min="0" style="width:100%;padding:5px;">
-        `;
-        resGrid.appendChild(d);
-    });
+    // === GUI (embedded above main form) ===
+    const mainForm = document.querySelector('#place_call_form');
+    if (!mainForm) {
+        alert("Could not find the main form - wrong screen?");
+        return;
+    }
 
-    form.appendChild(resGrid);
+    const section = document.createElement('div');
+    section.style.cssText = `
+        margin: 30px 0 30px 0;
+        padding: 20px;
+        background: #1a1a2e;
+        border: 2px solid #4a6fa5;
+        border-radius: 8px;
+        color: #e0e0ff;
+        font-family: Verdana, sans-serif;
+    `;
+
+    section.innerHTML = `
+        <h3 style="margin:0 0 20px; text-align:center; color:#8ab4f8; font-size:22px;">
+            PacketSender ${version} by Crim  <!-- ← Version added here -->
+        </h3>
+        <hr style="border-color:#4a6fa5; margin:0 0 20px 0;">
+    `;
+
+    const formWrapper = document.createElement('div');
+    formWrapper.style.display = 'grid';
+    formWrapper.style.gridTemplateColumns = '1fr 1fr';
+    formWrapper.style.gap = '20px';
+
+    formWrapper.innerHTML = `
+        <div>
+            <label style="font-weight:bold; display:block; margin-bottom:8px;">Total defense pop to send (k):</label>
+            <input type="number" id="gui-total-k" value="10" min="1" step="1" style="width:100%; padding:10px; font-size:16px; background:#222244; color:#e0e0ff; border:1px solid #4a6fa5; border-radius:6px;">
+        </div>
+
+        <div>
+            <label style="font-weight:bold; display:block; margin-bottom:8px;">Max packet size per village (k pop):</label>
+            <input type="number" id="gui-packet-k" value="1" min="0.5" step="0.5" style="width:100%; padding:10px; font-size:16px; background:#222244; color:#e0e0ff; border:1px solid #4a6fa5; border-radius:6px;">
+        </div>
+
+        <div>
+            <label style="font-weight:bold; display:block; margin-bottom:8px;">Max scouts/spies to send per village:</label>
+            <input type="number" id="gui-max-spy" value="50" min="0" step="1" style="width:100%; padding:10px; font-size:16px; background:#222244; color:#e0e0ff; border:1px solid #4a6fa5; border-radius:6px;">
+        </div>
+
+        <div>
+            <label style="font-weight:bold; display:block; margin-bottom:8px;">Heavy Pop Count:</label>
+            <input type="number" id="gui-heavy-pop" value="${HEAVY_POP_DEFAULT}" min="1" step="1" style="width:100%; padding:10px; font-size:16px; background:#222244; color:#e0e0ff; border:1px solid #4a6fa5; border-radius:6px;">
+        </div>
+    `;
+
+    const reservesSection = document.createElement('div');
+    reservesSection.style.gridColumn = '1 / -1';
+    reservesSection.style.marginTop = '10px';
+
+    reservesSection.innerHTML = `
+        <strong style="display:block; margin-bottom:12px;">Reserves per village (units to keep):</strong>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px;">
+            ${units.map(u => `
+                <div>
+                    <label style="font-size:0.9em;">${u.label}</label>
+                    <input type="number" class="gui-reserve" data-unit="${u.key}" value="${u.def}" min="0" style="width:100%; padding:10px; font-size:14px; background:#222244; color:#e0e0ff; border:1px solid #4a6fa5; border-radius:6px;">
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    formWrapper.appendChild(reservesSection);
 
     const resultDiv = document.createElement('div');
     resultDiv.id = 'gui-result';
-    resultDiv.style.marginTop = '16px';
-    resultDiv.style.padding = '10px';
-    resultDiv.style.background = 'rgba(0,0,0,0.3)';
-    resultDiv.style.borderRadius = '6px';
+    resultDiv.style.marginTop = '20px';
+    resultDiv.style.padding = '15px';
+    resultDiv.style.background = 'rgba(0,0,0,0.4)';
+    resultDiv.style.borderRadius = '8px';
     resultDiv.style.display = 'none';
-    form.appendChild(resultDiv);
+    formWrapper.appendChild(resultDiv);
 
-    const btnRow = document.createElement('div');
-    btnRow.style.display = 'flex';
-    btnRow.style.gap = '12px';
-    btnRow.style.marginTop = '12px';
+    const btnContainer = document.createElement('div');
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '12px';
+    btnContainer.style.marginTop = '20px';
+    btnContainer.style.gridColumn = '1 / -1';
 
     const sendBtn = document.createElement('button');
     sendBtn.textContent = "Send Packets";
     sendBtn.style.cssText = `
-        flex:1; padding:12px; font-size:16px; font-weight:bold;
-        background:#4a6fa5; color:white; border:none; border-radius:6px;
+        flex:1; padding:14px; font-size:18px; font-weight:bold;
+        background:#4a6fa5; color:white; border:none; border-radius:8px;
         cursor:pointer;
     `;
 
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = "Close";
+    closeBtn.textContent = "Close GUI";
     closeBtn.style.cssText = `
-        flex:1; padding:12px; font-size:16px;
-        background:#555; color:white; border:none; border-radius:6px;
+        flex:1; padding:14px; font-size:18px;
+        background:#555; color:white; border:none; border-radius:8px;
         cursor:pointer;
     `;
 
-    btnRow.appendChild(sendBtn);
-    btnRow.appendChild(closeBtn);
-    form.appendChild(btnRow);
-    content.appendChild(form);
+    btnContainer.appendChild(sendBtn);
+    btnContainer.appendChild(closeBtn);
+    formWrapper.appendChild(btnContainer);
 
-    // Draggable
-    let isDrag = false, curX, curY, initX, initY;
-    titleBar.addEventListener('mousedown', e => {
-        isDrag = true;
-        initX = e.clientX - curX;
-        initY = e.clientY - curY;
+    section.appendChild(formWrapper);
+
+    const parent = mainForm.parentElement;
+    parent.insertBefore(section, mainForm);
+
+    // === COOKIE HANDLING ===
+    function getCookie(name) {
+        const value = `; ${document.cookie}`;
+        const parts = value.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+    }
+
+    function setCookie(name, value) {
+        document.cookie = `${name}=${value}; path=/; max-age=31536000`;
+    }
+
+    // Load saved values
+    ['gui-total-k', 'gui-packet-k', 'gui-max-spy', 'gui-heavy-pop'].forEach(id => {
+        const saved = getCookie(`ps_${id}`);
+        if (saved) document.getElementById(id).value = saved;
     });
 
-    document.addEventListener('mousemove', e => {
-        if (!isDrag) return;
-        e.preventDefault();
-        curX = e.clientX - initX;
-        curY = e.clientY - initY;
-        gui.style.left = curX + 'px';
-        gui.style.top = curY + 'px';
-        gui.style.right = 'auto';
+    document.querySelectorAll('.gui-reserve').forEach(inp => {
+        const saved = getCookie(`ps_reserve_${inp.dataset.unit}`);
+        if (saved) inp.value = saved;
     });
 
-    document.addEventListener('mouseup', () => isDrag = false);
+    document.querySelectorAll('input').forEach(inp => {
+        inp.addEventListener('change', () => {
+            if (inp.id) setCookie(`ps_${inp.id}`, inp.value);
+            else if (inp.classList.contains('gui-reserve')) {
+                setCookie(`ps_reserve_${inp.dataset.unit}`, inp.value);
+            }
+        });
+    });
 
-    curX = window.innerWidth - 420;
-    curY = 80;
-    gui.style.left = curX + 'px';
-    gui.style.top = curY + 'px';
-
-    document.body.appendChild(gui);
-
-    closeBtn.onclick = () => gui.remove();
+    closeBtn.onclick = () => section.remove();
 
     // === SEND LOGIC ===
     sendBtn.onclick = () => {
         const totalK = parseFloat(document.getElementById('gui-total-k').value) || 0;
         const maxPacketK = parseFloat(document.getElementById('gui-packet-k').value) || 1;
         const maxSpyPerVillage = parseInt(document.getElementById('gui-max-spy').value) || 50;
+        const heavyPop = parseInt(document.getElementById('gui-heavy-pop').value) || 6;
 
-        if (totalK <= 0 || maxPacketK <= 0) {
+        if (totalK <= 0 || maxPacketK <= 0 || heavyPop <= 0) {
             alert("Enter valid positive numbers.");
             return;
         }
@@ -168,7 +193,7 @@
             reserve[i.dataset.unit] = parseInt(i.value) || 0;
         });
 
-        // Collect villages
+        // Collect
         const villages = [];
         let totalAvailDefensePop = 0;
 
@@ -201,7 +226,7 @@
                 if (u === "spy") {
                     availSpies = avail;
                 } else {
-                    defensePop += (u === "heavy" ? avail * HEAVY_POP : avail);
+                    defensePop += (u === "heavy" ? avail * heavyPop : avail);
                 }
             });
 
@@ -248,7 +273,7 @@
                 }
 
                 packet[u] = amt;
-                packetDefensePop += (u === "heavy" ? amt * HEAVY_POP : amt);
+                packetDefensePop += (u === "heavy" ? amt * heavyPop : amt);
             });
 
             if (packetDefensePop > MAX_PACKET_DEFENSE) {
@@ -258,7 +283,7 @@
                 });
                 packetDefensePop = DEFENSE_UNITS.reduce((s,u) => {
                     const a = packet[u] || 0;
-                    return s + (u === "heavy" ? a * HEAVY_POP : a);
+                    return s + (u === "heavy" ? a * heavyPop : a);
                 }, 0);
             }
 
@@ -270,12 +295,11 @@
             v.packetPop = packetDefensePop;
         });
 
-        // === IMPROVED FILL: Clear all first + retry if inputs not ready ===
+        // === FILLING ===
         villages.forEach(v => {
             const row = v.rowElement;
             if (!row) return;
 
-            // Clear all inputs to 0 first (safety)
             ["spear","sword","archer","spy","heavy"].forEach(u => {
                 const inp = row.querySelector(`input[name^="call["][name$="[${u}]"]`);
                 if (inp) {
@@ -285,42 +309,35 @@
                 }
             });
 
-            // Check row
             const cb = row.querySelector('input.troop-request-selector');
-            if (cb && !cb.checked) {
+            const isSending = Object.values(v.packet).some(a => a > 0);
+            if (isSending && cb && !cb.checked) {
                 cb.checked = true;
                 cb.dispatchEvent(new Event('change', {bubbles:true}));
                 cb.dispatchEvent(new Event('click', {bubbles:true}));
+            } else if (cb) {
+                cb.checked = false;
             }
 
-            // Retry mechanism: wait longer + check if inputs are enabled
-            const tryFill = (attempt = 0) => {
-                let allSet = true;
-
+            setTimeout(() => {
                 Object.entries(v.packet).forEach(([u, amt]) => {
-                    if (amt <= 0) return;
                     const inp = row.querySelector(`input[name^="call["][name$="[${u}]"]`);
-                    if (inp && !inp.disabled) {
+                    if (inp) {
+                        inp.disabled = false;
                         inp.value = amt;
                         inp.dispatchEvent(new Event('input', {bubbles:true}));
                         inp.dispatchEvent(new Event('change', {bubbles:true}));
-                    } else if (inp && attempt < 3) {
-                        allSet = false;
                     }
                 });
-
-                if (!allSet && attempt < 3) {
-                    setTimeout(() => tryFill(attempt + 1), 150); // retry every 150ms, max 3 times
-                }
-            };
-
-            setTimeout(() => tryFill(), 200); // initial delay 200ms
+            }, 400);
         });
 
-        // Results (unchanged)
+        // === RESULTS ===
         const sentDefenseTotal = villages.reduce((s,v)=>s+v.packetPop,0);
         const sentDefenseK = (sentDefenseTotal / 1000).toFixed(1);
-        const filled = villages.filter(v=>v.packetPop>0 || v.packet.spy>0).length;
+        const filled = villages.filter(v=> Object.values(v.packet).some(a=>a>0)).length;
+        const avgPacketPop = filled > 0 ? Math.round(sentDefenseTotal / filled) : 0;
+        const avgPacketK = (avgPacketPop / 1000).toFixed(1);
 
         let unitTotals = {spear:0, sword:0, archer:0, spy:0, heavy:0};
         villages.forEach(v => {
@@ -333,6 +350,7 @@
             <strong style="color:#8ab4f8;">Results:</strong><br>
             Filled villages: <b>${filled}</b><br>
             Total defense sent (excl. scouts): <b>${sentDefenseK}k</b> pop (requested ${totalK}k)<br>
+            Average packet size: <b>${avgPacketPop.toLocaleString()}</b> pop (${avgPacketK}k)<br>
             <br>
             <strong>Units sent total:</strong><br>
             Spears: <b>${unitTotals.spear.toLocaleString()}</b><br>
@@ -346,7 +364,7 @@
         document.getElementById('gui-result').style.display = 'block';
 
         UI.SuccessMessage(
-            `Success! Check GUI for exact totals.<br>Defense sent: <b>${sentDefenseK}k</b> pop`,
+            `Success! Check embedded results above.<br>Defense sent: <b>${sentDefenseK}k</b> pop`,
             8000
         );
     };
